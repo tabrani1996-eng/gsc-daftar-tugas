@@ -12,4 +12,4 @@ Buka `index.html` di browser. Tidak perlu instalasi.
 
 ## Catatan
 
-Saat ini data tersimpan di browser masing-masing. Tahap berikutnya: sambungkan ke Supabase agar data tersimpan online dan bisa dipakai bersama tim, lalu deploy ke Netlify agar punya alamat web.
+Data tersimpan online di Supabase (project gsc-daftar-tugas, region Singapore). Struktur tabel ada di `supabase/schema.sql`. Untuk latihan, siapa pun yang membuka halaman bisa menambah dan mengubah data; sebelum dipakai tim sungguhan, tambahkan login. Tahap berikutnya: deploy ke Netlify agar punya alamat web.

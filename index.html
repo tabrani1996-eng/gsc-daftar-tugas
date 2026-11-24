@@ -61,13 +61,35 @@ form.add input { flex: 1; }
 </main>
 
 <script>
-// Data disimpan di browser (localStorage). Tahap berikutnya: pindah ke Supabase agar bisa dipakai bersama tim.
-var KEY = 'gsc-daftar-tugas';
+// Data disimpan online di Supabase (project gsc-daftar-tugas), lewat REST API.
+// Kunci "publishable" aman ditaruh di halaman web; keamanan diatur oleh RLS di database.
+var SUPABASE_URL = 'https://xlxxwyjanwimyvgdukir.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_nQ4srKxenb-LNo8YJRTiAw_otDaCuWE';
 var DEFAULT_TASKS = ['Survei lokasi', 'Briefing K3', 'Pembersihan dengan drone', 'Pengecekan hasil', 'Kirim laporan foto sebelum dan sesudah'];
 
-function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(jobs)); } catch (e) {} }
-var jobs = load();
+function api(path, opts) {
+  opts = opts || {};
+  return fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method: opts.method || 'GET',
+    headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  }).then(function (r) {
+    if (!r.ok) return r.text().then(function (t) { throw new Error(t || r.status); });
+    return r.status === 204 ? null : r.json();
+  });
+}
+
+var jobs = [];
+function load() {
+  return api('jobs?select=id,name,job_date,tasks(id,text,done,position)&order=created_at.desc&tasks.order=position.asc')
+    .then(function (rows) { jobs = rows; render(); })
+    .catch(showError);
+}
+function showError(e) {
+  var root = document.getElementById('jobs');
+  root.innerHTML = '';
+  root.appendChild(el('p', { class: 'empty' }, 'Data tidak bisa dimuat dari Supabase. Periksa koneksi internet lalu muat ulang halaman. (' + e.message + ')'));
+}
 
 function el(tag, attrs, text) {
   var n = document.createElement(tag);
@@ -80,15 +102,15 @@ function render() {
   var root = document.getElementById('jobs');
   root.innerHTML = '';
   if (!jobs.length) { root.appendChild(el('p', { class: 'empty' }, 'Belum ada job. Tambahkan job pertama di atas.')); return; }
-  jobs.forEach(function (job, j) {
+  jobs.forEach(function (job) {
     var done = job.tasks.filter(function (t) { return t.done; }).length;
     var card = el('article', { class: 'job' + (done === job.tasks.length && done ? ' complete' : '') });
     var head = el('header');
     head.appendChild(el('h2', {}, job.name));
     var right = el('div');
-    right.appendChild(el('span', { class: 'meta' }, (job.date ? job.date + ' · ' : '') + done + ' dari ' + job.tasks.length + ' selesai'));
+    right.appendChild(el('span', { class: 'meta' }, (job.job_date ? job.job_date + ' · ' : '') + done + ' dari ' + job.tasks.length + ' selesai'));
     var del = el('button', { class: 'ghost', type: 'button', 'aria-label': 'Hapus job ' + job.name }, 'Hapus');
-    del.onclick = function () { if (confirm('Hapus job "' + job.name + '"?')) { jobs.splice(j, 1); save(); render(); } };
+    del.onclick = function () { if (confirm('Hapus job "' + job.name + '"?')) api('jobs?id=eq.' + job.id, { method: 'DELETE' }).then(load, showError); };
     right.appendChild(del);
     head.appendChild(right);
     card.appendChild(head);
@@ -98,15 +120,15 @@ function render() {
     bar.appendChild(fill); card.appendChild(bar);
 
     var ul = el('ul');
-    job.tasks.forEach(function (t, i) {
+    job.tasks.forEach(function (t) {
       var li = el('li', { class: t.done ? 'checked' : '' });
       var label = el('label');
       var cb = el('input', { type: 'checkbox' }); cb.checked = t.done;
-      cb.onchange = function () { t.done = cb.checked; save(); render(); };
+      cb.onchange = function () { t.done = cb.checked; render(); api('tasks?id=eq.' + t.id, { method: 'PATCH', body: { done: t.done } }).catch(showError); };
       label.appendChild(cb); label.appendChild(el('span', {}, t.text));
       li.appendChild(label);
       var x = el('button', { class: 'ghost', type: 'button', 'aria-label': 'Hapus tugas ' + t.text }, 'Hapus');
-      x.onclick = function () { job.tasks.splice(i, 1); save(); render(); };
+      x.onclick = function () { api('tasks?id=eq.' + t.id, { method: 'DELETE' }).then(load, showError); };
       li.appendChild(x);
       ul.appendChild(li);
     });
@@ -115,7 +137,10 @@ function render() {
     var add = el('form', { class: 'add' });
     var inp = el('input', { placeholder: 'Tambah tugas lain', 'aria-label': 'Tambah tugas untuk ' + job.name });
     add.appendChild(inp); add.appendChild(el('button', { type: 'submit' }, 'Tambah'));
-    add.onsubmit = function (e) { e.preventDefault(); var v = inp.value.trim(); if (!v) return; job.tasks.push({ text: v, done: false }); save(); render(); };
+    add.onsubmit = function (e) {
+      e.preventDefault(); var v = inp.value.trim(); if (!v) return;
+      api('tasks', { method: 'POST', body: { job_id: job.id, text: v, position: job.tasks.length } }).then(load, showError);
+    };
     card.appendChild(add);
     root.appendChild(card);
   });
@@ -123,12 +148,19 @@ function render() {
 
 document.getElementById('new-job').onsubmit = function (e) {
   e.preventDefault();
+  var form = this;
   var name = document.getElementById('job-name').value.trim();
   if (!name) return;
-  jobs.unshift({ name: name, date: document.getElementById('job-date').value, tasks: DEFAULT_TASKS.map(function (t) { return { text: t, done: false }; }) });
-  save(); this.reset(); render();
+  var date = document.getElementById('job-date').value || null;
+  api('jobs', { method: 'POST', body: { name: name, job_date: date } })
+    .then(function (rows) {
+      var id = rows[0].id;
+      return api('tasks', { method: 'POST', body: DEFAULT_TASKS.map(function (t, i) { return { job_id: id, text: t, position: i }; }) });
+    })
+    .then(function () { form.reset(); return load(); })
+    .catch(showError);
 };
-render();
+load();
 </script>
 </body>
 </html>
