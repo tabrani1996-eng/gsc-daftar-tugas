@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daftar Tugas GSC</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,700;1,800&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root {
+  --bg: #F3F8FD; --surface: #FFFFFF; --ink: #0A2350; --muted: #4A5D7E;
+  --sky: #1F7FE0; --line: #D3E0EE; --done: #168F48; --danger: #C62828;
+  --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "Barlow", "Segoe UI", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #071833; --surface: #0D2345; --ink: #EAF2FC; --muted: #A7BBD6;
+  --sky: #5AA9F5; --line: #1E3A63; --done: #3CC777; --danger: #FF7A7A; color-scheme: dark } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.5; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+h1, h2 { font-family: var(--display); font-style: italic; font-weight: 800; margin: 0; line-height: 1; }
+h1 { font-size: clamp(2.4rem, 7vw, 3.4rem); }
+h2 { font-size: 1.7rem; font-weight: 700; }
+.sub { color: var(--muted); margin: 8px 0 28px; }
+form.new { display: grid; grid-template-columns: 1fr 160px auto; gap: 8px; margin-bottom: 32px; }
+input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); min-width: 0; }
+button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; background: var(--sky); color: #fff; }
+button.ghost { background: none; color: var(--muted); padding: 6px 8px; font-weight: 500; }
+button.ghost:hover { color: var(--danger); }
+:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+.job { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--sky); border-radius: 8px; padding: 18px 18px 12px; margin-bottom: 20px; }
+.job.complete { border-top-color: var(--done); }
+.job header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.meta { color: var(--muted); font-size: .95rem; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; margin: 12px 0 8px; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--done); transition: width .3s; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+li:last-child { border-bottom: 0; }
+li label { flex: 1; display: flex; gap: 10px; align-items: center; cursor: pointer; }
+li input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--done); }
+li.checked label span { color: var(--muted); text-decoration: line-through; }
+form.add { display: flex; gap: 8px; margin-top: 10px; }
+form.add input { flex: 1; }
+.empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 24px; text-align: center; }
+@media (max-width: 560px) { form.new { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Daftar Tugas Job</h1>
+  <p class="sub">Global Sky Clean. Satu kartu untuk setiap job pembersihan gedung.</p>
+
+  <form class="new" id="new-job">
+    <input id="job-name" placeholder="Nama gedung atau klien" required aria-label="Nama gedung atau klien">
+    <input id="job-date" type="date" aria-label="Tanggal pekerjaan">
+    <button type="submit">Tambah job</button>
+  </form>
+
+  <div id="jobs"></div>
+</main>
+
+<script>
+// Data disimpan di browser (localStorage). Tahap berikutnya: pindah ke Supabase agar bisa dipakai bersama tim.
+var KEY = 'gsc-daftar-tugas';
+var DEFAULT_TASKS = ['Survei lokasi', 'Briefing K3', 'Pembersihan dengan drone', 'Pengecekan hasil', 'Kirim laporan foto sebelum dan sesudah'];
+
+function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(jobs)); } catch (e) {} }
+var jobs = load();
+
+function el(tag, attrs, text) {
+  var n = document.createElement(tag);
+  for (var k in attrs || {}) n.setAttribute(k, attrs[k]);
+  if (text) n.textContent = text;
+  return n;
+}
+
+function render() {
+  var root = document.getElementById('jobs');
+  root.innerHTML = '';
+  if (!jobs.length) { root.appendChild(el('p', { class: 'empty' }, 'Belum ada job. Tambahkan job pertama di atas.')); return; }
+  jobs.forEach(function (job, j) {
+    var done = job.tasks.filter(function (t) { return t.done; }).length;
+    var card = el('article', { class: 'job' + (done === job.tasks.length && done ? ' complete' : '') });
+    var head = el('header');
+    head.appendChild(el('h2', {}, job.name));
+    var right = el('div');
+    right.appendChild(el('span', { class: 'meta' }, (job.date ? job.date + ' · ' : '') + done + ' dari ' + job.tasks.length + ' selesai'));
+    var del = el('button', { class: 'ghost', type: 'button', 'aria-label': 'Hapus job ' + job.name }, 'Hapus');
+    del.onclick = function () { if (confirm('Hapus job "' + job.name + '"?')) { jobs.splice(j, 1); save(); render(); } };
+    right.appendChild(del);
+    head.appendChild(right);
+    card.appendChild(head);
+
+    var bar = el('div', { class: 'bar' }); var fill = el('span');
+    fill.style.width = (job.tasks.length ? done / job.tasks.length * 100 : 0) + '%';
+    bar.appendChild(fill); card.appendChild(bar);
+
+    var ul = el('ul');
+    job.tasks.forEach(function (t, i) {
+      var li = el('li', { class: t.done ? 'checked' : '' });
+      var label = el('label');
+      var cb = el('input', { type: 'checkbox' }); cb.checked = t.done;
+      cb.onchange = function () { t.done = cb.checked; save(); render(); };
+      label.appendChild(cb); label.appendChild(el('span', {}, t.text));
+      li.appendChild(label);
+      var x = el('button', { class: 'ghost', type: 'button', 'aria-label': 'Hapus tugas ' + t.text }, 'Hapus');
+      x.onclick = function () { job.tasks.splice(i, 1); save(); render(); };
+      li.appendChild(x);
+      ul.appendChild(li);
+    });
+    card.appendChild(ul);
+
+    var add = el('form', { class: 'add' });
+    var inp = el('input', { placeholder: 'Tambah tugas lain', 'aria-label': 'Tambah tugas untuk ' + job.name });
+    add.appendChild(inp); add.appendChild(el('button', { type: 'submit' }, 'Tambah'));
+    add.onsubmit = function (e) { e.preventDefault(); var v = inp.value.trim(); if (!v) return; job.tasks.push({ text: v, done: false }); save(); render(); };
+    card.appendChild(add);
+    root.appendChild(card);
+  });
+}
+
+document.getElementById('new-job').onsubmit = function (e) {
+  e.preventDefault();
+  var name = document.getElementById('job-name').value.trim();
+  if (!name) return;
+  jobs.unshift({ name: name, date: document.getElementById('job-date').value, tasks: DEFAULT_TASKS.map(function (t) { return { text: t, done: false }; }) });
+  save(); this.reset(); render();
+};
+render();
+</script>
+</body>
+</html>
